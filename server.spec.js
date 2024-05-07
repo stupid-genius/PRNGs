@@ -1,7 +1,8 @@
 const { assert } = require('chai');
+const Logger = require('log-ng');
 const path = require('path');
-const Logger = require('./logger');
 
+Logger({logLevel: 'error', logFile: 'server.log'});
 const logger = new Logger(path.basename(__filename));
 
 describe('Server', function(){

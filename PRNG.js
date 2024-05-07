@@ -1,6 +1,14 @@
 const biMath = require('BigIntMath');
+const {
+	generateLCGParams,
+	lcg,
+	range
+} = require('./lcg');
+const {
+	mwc
+} = require('./mwc');
 
-function integer(){
+function uniform(){
 	return Math.floor(Math.random() * Number.MAX_SAFE_INTEGER);
 }
 
@@ -19,114 +27,7 @@ function gaussian(name, mean, stdDev){
 	});
 }
 
-function xgcd(a, b){
-	let q;
-	let [x, lastX] = [0, 1];
-	let [y, lastY] = [1, 0];
-
-	while(b){
-		q = Math.floor(a / b);
-		[a, b] = [b, a - q * b];
-		[x, lastX] = [lastX - q * x, x];
-		[y, lastY] = [lastY - q * y, y];
-	}
-
-	let res;
-	if(a < 0){
-		res = [-a, -lastX, lastY];
-	}else{
-		res = [a, a ? lastX : 0, lastY];
-	}
-	return res;
-}
-function gcd(a, b){
-	return xgcd(a, b)[0];
-}
-function isPrime(candidate){
-	if(candidate <= 1) {
-		return false;
-	}
-	if(candidate <= 3) {
-		return true;
-	}
-	if(candidate % 2 === 0 || candidate % 3 === 0) {
-		return false;
-	}
-
-	return millerRabinTest(candidate, 20);
-}
-
-function millerRabinTest(n, k){
-	if(n <= 1 || n % 2 === 0){
-		return false;
-	}
-
-	// Write n as 2^r * d + 1
-	let r = 0;
-	let d = n - 1;
-	while(d % 2 === 0){
-		r++;
-		d /= 2;
-	}
-
-	// Witness loop
-	for(let i = 0; i < k; i++){
-		let a = uniformRange(2, n-2); // Random witness in the range [2, n-2]
-		let x = Math.pow(a, d) % n;
-
-		if(x === 1 || x === n - 1){
-			continue; // Test passed, try another witness
-		}
-
-		for(let j = 0; j < r - 1; j++){
-			x = Math.pow(x, 2) % n;
-			if(x === n - 1){
-				break; // Test passed, try another witness
-			}
-		}
-
-		if(x !== n - 1){
-			return false; // Not prime
-		}
-	}
-
-	return true; // Likely prime
-}
-function generateLCGParams(seed, width){
-	if(width > 53){
-		throw new Error('Width must be less than or equal to 53');
-	}
-
-	let a = seed | 1;
-	while(!isPrime(a)){
-		a += 2;
-	}
-	const m = 2**width;
-	let c = 1;
-	while(gcd(c, m) !== 1){
-		c++;
-	}
-
-	return [a, c, m];
-}
-function lcg(name, a, c, m, seed){
-	// console.log('creating lcg', name, a, c, m, seed);
-	Object.defineProperty(lcg, name, {
-		value: function(){
-			// seed = newSeed | (a * seed + c) % m;
-			seed = (a * seed + c) % m;
-			return seed;
-		}
-	});
-	// console.log('lcg:', lcg[name].toString());
-	return lcg[name];
-}
-
-function uniformRange(min, max){
-	return Math.floor(Math.random() * (max - min + 1)) + min;
-}
-
-function PRNG(){
+function PRNG(seed, mean=50, std=15){
 	if(!new.target){
 		return new PRNG(...arguments);
 	}
@@ -135,8 +36,14 @@ function PRNG(){
 	}
 	Object.defineProperty(PRNG, 'instance', {value: this});
 
-	const [a, c, m] = generateLCGParams(uniformRange(1000, 10000), 16);
-	lcg('seeded', a, c, m, uniformRange(1, m));
+	// const [a, c, m] = generateLCGParams(range(100, 1000), Number.THIRTY_TWO_BIT_MAX);
+	// const [a, c, m] = generateLCGParams(123, 2 ** 8);
+	const [a, c, m] = [1664525, 1013904223, 2 ** 32 - 1];
+	lcg('random', a, c, m, seed ?? range(1, m));
+	// mwc('random', a, c, m, seed ?? range(1, m));
+	mwc('random', 4294957665, 362436, 123456789);
+	// mwc('random', 4294967291, c, m);
+	// mwc('random', 0xFFFFDA61, c, m);
 	gaussian('random', 50, 15);
 
 	Object.defineProperties(this, {
@@ -150,29 +57,28 @@ function PRNG(){
 			}
 		},
 		integer: {
-			value: integer
+			value: range
 		},
-		gaussian: {
-			value: gaussian
+		normal: {
+			value: gaussian.random.bind(gaussian)
 		},
 		lcg: {
-			value: lcg
+			value: lcg.random.bind(lcg)
 		},
-		range: {
-			value: uniformRange
+		mwc: {
+			value: mwc.random.bind(mwc)
+		},
+		uniform: {
+			value: uniform
 		}
 	});
 }
+const prng = PRNG();
 
 module.exports = {
-	integer,
 	gaussian,
-	gcd,
 	generateLCGParams,
-	isPrime,
 	lcg,
-	normal: gaussian.random,
-	seeded: lcg.seeded,
-	uniformRange,
-	PRNG: PRNG()
+	mwc,
+	PRNG: prng
 };

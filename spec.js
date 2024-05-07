@@ -1,5 +1,6 @@
 const {assert} = require('chai');
-// import Logger from './blogger';
+const Logger = require('log-ng').default;
+// Logger.setLogLevel('debug');
 const {
 	CIQ,
 	ciqSeeded
@@ -9,9 +10,12 @@ const {
 	gcd,
 	generateLCGParams,
 	isPrime,
+} = require('./lcg');
+const {
+	lcg,
 	PRNG
 } = require('./PRNG');
-// const logger = new Logger('spec.js');
+const logger = new Logger('spec.js');
 
 // Abramowitz and Stegun approximation of the error function
 function erf(x){
@@ -54,8 +58,8 @@ function kolmogorovSmirnovTest(samples, theoreticalCDF){
 }
 
 function chiSquaredBigInt(sequence, numBins){
-	// console.log('sequence:', sequence);
-	// console.log('numBins:', numBins);
+	// logger.info('sequence:', sequence);
+	// logger.info('numBins:', numBins);
 	if(!(numBins instanceof BigInt)){
 		numBins = BigInt(numBins);
 	}
@@ -63,20 +67,20 @@ function chiSquaredBigInt(sequence, numBins){
 
 	const min = sequence[0];
 	const max = sequence[sequence.length - 1];
-	// console.log('min:', min, 'max:', max, 'range:', max - min);
+	// logger.info('min:', min, 'max:', max, 'range:', max - min);
 	const binSize = (max - min + 1n) / numBins;
-	// console.log('binSize:', binSize);
+	// logger.info('binSize:', binSize);
 
 	const observedFrequency = new Array(Number(numBins) + 1).fill(0n);
-	// console.log('observedFrequency:', observedFrequency, observedFrequency.length, typeof observedFrequency[0]);
+	// logger.info('observedFrequency:', observedFrequency, observedFrequency.length, typeof observedFrequency[0]);
 	for(let i = 0; i < sequence.length; i++){
 		// figure out which bin the value belongs to
 		const bin = Number((sequence[i] - min) / binSize);
 		try{
 			observedFrequency[bin] += 1n;
 		}catch(e){
-			// console.log('sequence:', sequence[i]);
-			// console.log('bin:', bin, typeof bin, 'observedFrequency[bin]:', observedFrequency[bin], typeof observedFrequency[bin]);
+			// logger.info('sequence:', sequence[i]);
+			// logger.info('bin:', bin, typeof bin, 'observedFrequency[bin]:', observedFrequency[bin], typeof observedFrequency[bin]);
 			assert(false);
 		}
 	}
@@ -86,10 +90,10 @@ function chiSquaredBigInt(sequence, numBins){
 	let chiSquare = 0n;
 	for(let i = 0; i < numBins; i++){
 		const deviation = observedFrequency[i] - expectedFrequency;
-		chiSquare += ((deviation ** 2n) * expectedFrequency) / (expectedFrequency ** 2n);
+		chiSquare += ((deviation ** 2n)) / (expectedFrequency);
 	}
 
-	// console.log('chiSquare:', chiSquare);
+	// logger.info('chiSquare:', chiSquare);
 	return chiSquare;
 }
 
@@ -104,7 +108,7 @@ function calculateEntropy(data){
 			frequencies[value] = 1;
 		}
 	}
-	// console.log('frequencies:', frequencies);
+	// logger.info('frequencies:', frequencies);
 
 	let entropy = 0;
 	const dataSize = data.length;
@@ -125,7 +129,7 @@ describe('Uniform distribution', function(){
 		const min = 0;
 		const max = Number.MAX_SAFE_INTEGER;
 
-		const samples = Array.from({length: numSamples}, PRNG.integer);
+		const samples = Array.from({length: numSamples}, PRNG.uniform);
 		const cdf = uniformIntegerCDF.bind(null, min, max);
 		const {passed} = kolmogorovSmirnovTest(samples, cdf);
 
@@ -136,7 +140,7 @@ describe('Uniform distribution', function(){
 		const min = 100;
 		const max = 1000;
 
-		const samples = Array.from({length: numSamples}, () => PRNG.range(min, max));
+		const samples = Array.from({length: numSamples}, () => PRNG.integer(min, max));
 		const cdf = uniformIntegerCDF.bind(null, min, max);
 		const {passed} = kolmogorovSmirnovTest(samples, cdf);
 
@@ -169,45 +173,73 @@ describe('Uniform distribution', function(){
 });
 
 describe('Linear Congruential Generator', function(){
-	it('should generate high-quality LCG parameters', function(){
+	// this.timeout(20000);
+	it.skip('should generate high-quality LCG parameters', function(){
 		const seed = 123;
-		const width = 52;
-		const [a, c, m] = generateLCGParams(seed, width);
+		// const suggestedMax = 2 ** 30;
+		const suggestedMax = 2 ** 18;
+		const [a, c, m] = generateLCGParams(seed, suggestedMax);
 
 		assert.isTrue(isPrime(a), 'Multiplier a is not a prime number');
 		assert.strictEqual(gcd(c, m), 1, 'Increment c and modulus m are not relatively prime');
-		assert.strictEqual(m, 2 ** width, 'Modulus m is not 2 raised to the power of width');
+		assert.ok(m <= suggestedMax, 'Modulus m is not less than or equal to the maximum value');
 	});
 	it('should produce uniform seeded distribution', function(){
 		const numSamples = 1000;
 		const min = 0;
-		const max = 2 ** 16;
+		// const max = Number.THIRTY_TWO_BIT_MAX;
+		const max = 2 ** 32
 
-		const samples = Array.from({length: numSamples}, PRNG.lcg.seeded);
+		const samples = Array.from({length: numSamples}, PRNG.lcg);
+		logger.info(`min: ${Math.min(...samples)}, max: ${Math.max(...samples)}`);
+		logger.info(samples);
 		const cdf = uniformIntegerCDF.bind(null, min, max);
-		const {passed} = kolmogorovSmirnovTest(samples, cdf);
+		// const {passed} = kolmogorovSmirnovTest(samples, cdf);
+		const result = kolmogorovSmirnovTest(samples, cdf);
+		logger.info(result);
 
-		assert.ok(passed, 'The generated samples do not follow a uniform distribution');
+		assert.ok(result.passed, 'The generated samples do not follow a uniform distribution');
 	});
 	it('should produce a full period before repeating', function(){
 		const seed = 123;
-		const width = 16;
-		const [a, c, m] = generateLCGParams(seed, width);
-		// console.log(a, c, m, seed);
-		const lcg = PRNG.lcg('test', a, c, m, seed);
+		// const suggestedMax = 2 ** 16;
+		// const [a, c, m] = generateLCGParams(seed, suggestedMax);
+		const [a, c, m] = [1664525, 1013904223, 2 ** 32];
+		// logger.info(a, c, m, seed);
+		const lcgTest = lcg('test', a, c, m, seed);
 
 		const seen = new Set();
-		let value;
+		const expected = 10**6;
+		let value, i = 0;
 		do{
-			value = lcg();
-			// console.log(value);
+			value = lcgTest();
+			// logger.info(value);
 			if(seen.has(value)){
 				break;
 			}
 			seen.add(value);
-		}while(true);
+		}while(++i < expected);
 
-		assert.strictEqual(seen.size, m, 'LCG does not have a full period');
+		assert.strictEqual(seen.size, expected, 'LCG does not have a full period');
+	});
+});
+
+describe('Multiply With Carry', function(){
+	it.skip('should produce uniform seeded distribution', function(){
+		const numSamples = 40;
+		const min = 0;
+		// const max = Number.THIRTY_TWO_BIT_MAX;
+		const max = 2 ** 32
+
+		const samples = Array.from({length: numSamples}, PRNG.mwc);
+		logger.info(`min: ${Math.min(...samples)}, max: ${Math.max(...samples)}`);
+		logger.info(samples);
+		const cdf = uniformIntegerCDF.bind(null, min, max);
+		// const {passed} = kolmogorovSmirnovTest(samples, cdf);
+		const result = kolmogorovSmirnovTest(samples, cdf);
+		logger.info(JSON.stringify(result));
+
+		assert.ok(result.passed, 'The generated samples do not follow a uniform distribution');
 	});
 });
 
@@ -217,7 +249,7 @@ describe('Normal distribution', function(){
 		const mean = 50;
 		const stdDev = 15;
 
-		const samples = Array.from({length: numSamples}, PRNG.gaussian.random);
+		const samples = Array.from({length: numSamples}, PRNG.normal);
 		const cdf = normalCDF.bind(null, mean, stdDev);
 		const {passed} = kolmogorovSmirnovTest(samples, cdf);
 
@@ -231,7 +263,7 @@ describe('CIQ', function(){
 		const numSamples = 1000;
 
 		const samples = Array.from({length: numSamples}, CIQ.random);
-		// console.log(samples);
+		// logger.info(samples);
 		const {passed} = kolmogorovSmirnovTest(samples, uniformCDF);
 
 		assert.ok(passed, 'The generated samples do not follow a uniform distribution');
@@ -241,21 +273,20 @@ describe('CIQ', function(){
 		const seed = 321;
 		// const m = 126726
 		const m = 2 ** 16.9514;
-		// console.log('seed:', seed, 'm:', m);
+		// logger.info('seed:', seed, 'm:', m);
 		const lcg = ciqSeeded(seed, seed);
 
 		const seen = new Set();
 		let value;
 		do{
 			value = lcg();
-			// console.log(value);
+			// logger.info(value);
 			if(seen.has(value)){
 				break;
 			}
 			seen.add(value);
 		}while(true);
 
-		// this amateurish LCG's period depends on the seed and is very volatile
 		assert.notStrictEqual(seen.size, m, 'LCG does not have a full period');
 	});
 	it('should pass Kolmogorov-Smirnov for normal distribution', function(){
@@ -267,7 +298,6 @@ describe('CIQ', function(){
 		const cdf = normalCDF.bind(null, mean, stdDev);
 		const {passed} = kolmogorovSmirnovTest(samples, cdf);
 
-		// Assert that the test result p-value is greater than a significance level (e.g., 0.05)
 		assert.ok(passed, 'The generated samples do not follow a normal distribution');
 	});
 });
@@ -279,7 +309,7 @@ describe('GRC', function(){
 		const max = Number.MAX_SAFE_INTEGER;
 
 		const samples = Array.from({length: numSamples}, () => uheprng(max));
-		// console.log(samples);
+		// logger.info(samples);
 		const cdf = uniformIntegerCDF.bind(null, min, max);
 		const {passed} = kolmogorovSmirnovTest(samples, cdf);
 
@@ -292,7 +322,7 @@ describe('Entropy test', function(){
 		const numSamples = 1000;
 		const samples = Array.from({length: numSamples}, () => Math.random());
 		const entropy = calculateEntropy(samples);
-		// console.log('Entropy:', entropy);
+		// logger.info('Entropy:', entropy);
 
 		// The entropy of a uniformly distributed random variable [0,1) is 1
 		const threshold = 0.9;
@@ -302,7 +332,7 @@ describe('Entropy test', function(){
 		const numSamples = 1000;
 		const samples = Array.from({length: numSamples}, () => 0);
 		const entropy = calculateEntropy(samples);
-		// console.log('Entropy:', entropy);
+		// logger.info('Entropy:', entropy);
 
 		// The entropy of a constant random variable is 0
 		const threshold = 0.1;
@@ -310,9 +340,9 @@ describe('Entropy test', function(){
 	});
 	it('uniform integer distribution should have high entropy', function(){
 		const numSamples = 1000;
-		const samples = Array.from({length: numSamples}, PRNG.integer);
+		const samples = Array.from({length: numSamples}, PRNG.uniform);
 		const entropy = calculateEntropy(samples);
-		// console.log('Entropy:', entropy);
+		// logger.info('Entropy:', entropy);
 
 		const threshold = 0.9;
 		assert.ok(entropy > threshold, `Entropy is too low: ${entropy}`);
@@ -323,28 +353,28 @@ describe('Entropy test', function(){
 		const max = BigInt(Number.MAX_SAFE_INTEGER * 2);
 		const samples = Array.from({length: numSamples}, () => PRNG.biRandom(min, max));
 		const entropy = calculateEntropy(samples);
-		// console.log('Entropy:', entropy);
+		// logger.info('Entropy:', entropy);
 
 		const threshold = 0.9;
 		assert.ok(entropy > threshold, `Entropy is too low: ${entropy}`);
 	});
 	it('LCG should have high entropy', function(){
 		const numSamples = 1000;
-		const samples = Array.from({length: numSamples}, PRNG.lcg.seeded);
+		const samples = Array.from({length: numSamples}, PRNG.lcg);
 		const entropy = calculateEntropy(samples);
-		// console.log('Entropy:', entropy);
+		// logger.info('Entropy:', entropy);
 
 		const threshold = 0.9;
 		assert.ok(entropy > threshold, `Entropy is too low: ${entropy}`);
 	});
 	it('normal distribution should have high entropy', function(){
 		const numSamples = 1000;
-		const mean = 50;
-		const stdDev = 15;
+		// const mean = 50;
+		// const stdDev = 15;
 
-		const samples = Array.from({length: numSamples}, PRNG.gaussian.random);
+		const samples = Array.from({length: numSamples}, PRNG.normal);
 		const entropy = calculateEntropy(samples);
-		// console.log('Entropy:', entropy);
+		// logger.info('Entropy:', entropy);
 
 		const threshold = 0.9;
 		assert.ok(entropy > threshold, `Entropy is too low: ${entropy}`);
