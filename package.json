@@ -2,7 +2,7 @@
   "name": "PRNG",
   "version": "1.0.0",
   "description": "Pseudo Random Number Generators",
-  "main": "index.js",
+  "main": "PRNG.js",
   "scripts": {
     "mocha": "mocha",
     "test": "karma start",
@@ -21,10 +21,11 @@
     "karma-firefox-launcher": "^2.1.2",
     "karma-mocha": "^2.0.1",
     "karma-mocha-reporter": "^2.2.5",
+    "log-ng": "github:stupid-genius/log-ng",
     "mocha": "^10.2.0",
     "winston": "^3.11.0"
   },
   "dependencies": {
-    "BigIntMath": "github:allen-ciq/BigIntMath"
+    "BigIntMath": "github:stupid-genius/BigIntMath"
   }
 }
